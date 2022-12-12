@@ -1,5 +1,4 @@
 import fs from "fs";
-import { start } from "repl";
 
 function getHeightFromChar(c: string): number {
   // Convert the character to a number
@@ -36,8 +35,8 @@ for (let row = 0; row < lines.length; row++) {
 }
 
 function canClimb(from: number, to: number): boolean {
-  const delta = from - to;
-  return delta <= 1;
+  const heightDifference = to - from;
+  return heightDifference <= 1;
 }
 
 const DIRECTIONS = {
@@ -47,7 +46,9 @@ const DIRECTIONS = {
   right: [1, 0],
 };
 
-function canClimbInDirection(pos: number[], direction: string) {
+type Direction = keyof typeof DIRECTIONS;
+
+function canClimbInDirection(pos: number[], direction: Direction) {
   //   console.log(pos, direction);
   const [x, y] = pos;
   const [dx, dy] = DIRECTIONS[direction];
@@ -59,58 +60,72 @@ function canClimbInDirection(pos: number[], direction: string) {
   return canClimb(grid[x][y], grid[nx][ny]);
 }
 
-let found = 0;
-
-function scanNeighbours(pos: number[], checked: Set<string>, stepsMem: Map<string, number>, level = 0): number | null {
-  const [x, y] = pos;
-
-  if (x === startPos[0] && y === startPos[1]) {
-    found++;
-    return 0;
-  }
-
-  const canClimbNeighbours = Object.keys(DIRECTIONS).filter((d) => canClimbInDirection(pos, d));
-
-  const neighbourStepsToEnd = canClimbNeighbours
-    .map((n) => {
-      const [dx, dy] = DIRECTIONS[n];
-      const [nx, ny] = [x + dx, y + dy];
-
-      return [nx, ny];
-    })
-    .filter((n) => !checked.has(n.join(",")))
-    .map((n) => {
-      const key = n.join(",");
-      const memValueKey = stepsMem.get(key);
-
-      if (!(startPos[0] === n[0] && startPos[1] === n[1])) {
-        checked.add(key);
-      }
-
-      if (memValueKey === null) return null;
-      if (memValueKey !== undefined) return memValueKey;
-
-      if (level <= 10000) {
-        // console.log("Checking ", level, n, " char ", lines[n[0]][n[1]]);
-      }
-      const steps = scanNeighbours(n, new Set([...checked]), stepsMem, level + 1);
-      if (steps !== null) {
-        const newSteps = steps + 1;
-        stepsMem.set(key, newSteps);
-        return newSteps;
-      } else {
-        stepsMem.set(key, null);
-      }
-      return null;
-    })
-    .filter((n) => n !== null);
-
-  if (neighbourStepsToEnd.length === 0) return null;
-
-  console.log("Neighbours", neighbourStepsToEnd);
-  const lowest = Math.min(...neighbourStepsToEnd);
-  return lowest;
+function hashPos(pos: [number, number]): string {
+  return pos.join(",");
 }
 
-console.log(scanNeighbours(endPos, new Set(), new Map()));
+let open = [
+  {
+    id: hashPos([startPos[0], startPos[0]]),
+    pos: startPos,
+    parent: null,
+    stepsFromStart: 0,
+  },
+];
+const closed = new Set<string>();
+let i = 0;
+c: while (true) {
+  const currentObj = open
+    .map(({ id, pos, stepsFromStart, parent }) => {
+      const hCost = Math.sqrt(Math.pow(pos[0] - endPos[0], 2) + Math.pow(pos[1] - endPos[1], 2));
+      const gCost = Math.sqrt(Math.pow(pos[0] - startPos[0], 2) + Math.pow(pos[1] - startPos[1], 2));
+      return { id, pos, hCost, gCost, score: hCost + gCost, stepsFromStart, parent: parent };
+    })
+    .sort((a, b) => {
+      if (a.stepsFromStart < b.stepsFromStart) return 1;
+      if (a.stepsFromStart > b.stepsFromStart) return -1;
+      // if (a.score < b.score) return 1;
+      // if (a.score > b.score) return -1;
+      return 0;
+    })
+    .map((n) => {
+      return { id: n.id, pos: n.pos, stepsFromStart: n.stepsFromStart, parent: n.parent };
+    })
+    .pop();
+
+  // console.log(open);
+  // console.log(closed);
+  // console.log(current);
+  if (!currentObj) break;
+
+  const current = currentObj.pos;
+  open = open.filter((n) => n.id !== currentObj.id);
+
+  closed.add(hashPos([current[0], current[1]]));
+
+  const traversibleDirections = Object.keys(DIRECTIONS).filter((d) => canClimbInDirection(current, d as Direction));
+
+  for (const direction of traversibleDirections) {
+    const [x, y] = current;
+    const [dx, dy] = DIRECTIONS[direction];
+    const [nx, ny] = [x + dx, y + dy];
+    if (nx === endPos[0] && ny === endPos[1]) {
+      console.log("Found with steps: ", currentObj.stepsFromStart + 1);
+      break c;
+    }
+    if (closed.has(hashPos([nx, ny]))) {
+      continue;
+    }
+    open.push({
+      id: hashPos([nx, ny]),
+      pos: [nx, ny],
+      stepsFromStart: currentObj.stepsFromStart + 1,
+      parent: currentObj,
+    });
+  }
+  i++;
+}
+
+let found = 0;
+
 console.log(found);
